@@ -1,3 +1,13 @@
 data/raw/
 __pycache__/
 *.pyc
+
+# MLOps local state
+data/raw_shift/
+mlruns/
+mlruns.db
+mlartifacts/
+kfp_local_outputs/
+logs/
+*.egg-info/
+.pytest_cache/

@@ -1,0 +1,45 @@
+# MLflow tracking server + model registry inside the cluster (namespace created by the KFP install).
+# SQLite on a PersistentVolume is fine for one user; use Postgres + S3/MinIO for a team.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: mlflow-data, namespace: kubeflow}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 2Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mlflow, namespace: kubeflow, labels: {app: mlflow}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mlflow}}
+  template:
+    metadata: {labels: {app: mlflow}}
+    spec:
+      containers:
+        - name: mlflow
+          image: ghcr.io/zaifmohammed-eng/cell-eol-forecaster:1.0.0
+          command: ["mlflow", "server"]
+          args:
+            - --backend-store-uri=sqlite:////mlflow/mlflow.db
+            - --artifacts-destination=/mlflow/artifacts
+            - --serve-artifacts
+            - --host=0.0.0.0
+            - --port=5000
+            # MLflow 3 rejects Host headers other than localhost/private IPs (HTTP 403)
+            # unless they are listed here.
+            - --allowed-hosts=mlflow,mlflow:*,mlflow.kubeflow,mlflow.kubeflow:*,mlflow.kubeflow.svc.cluster.local,mlflow.kubeflow.svc.cluster.local:*,localhost,localhost:*,127.0.0.1,127.0.0.1:*
+          ports: [{containerPort: 5000}]
+          readinessProbe: {httpGet: {path: /health, port: 5000}, initialDelaySeconds: 10, periodSeconds: 5}
+          volumeMounts: [{name: data, mountPath: /mlflow}]
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 1Gi}}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: mlflow-data}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: mlflow, namespace: kubeflow}
+spec:
+  selector: {app: mlflow}
+  ports: [{port: 5000, targetPort: 5000}]

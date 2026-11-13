@@ -1,0 +1,287 @@
+# PIPELINE DEFINITION
+# Name: cell-eol-forecaster-training
+# Description: Validate data, tune with nested LOCO, register in MLflow, gate on distribution shift.
+# Inputs:
+#    data_path: str
+#    tracking_uri: str
+#    trials: int [Default: 60.0]
+components:
+  comp-data-check:
+    executorLabel: exec-data-check
+    inputDefinitions:
+      parameters:
+        data_path:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-release-note:
+    executorLabel: exec-release-note
+    inputDefinitions:
+      parameters:
+        nested_interval_score:
+          parameterType: NUMBER_DOUBLE
+        nested_mae:
+          parameterType: NUMBER_DOUBLE
+        promoted:
+          parameterType: BOOLEAN
+        shift_route_rate:
+          parameterType: NUMBER_DOUBLE
+        version:
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-shift-check:
+    executorLabel: exec-shift-check
+    inputDefinitions:
+      parameters:
+        tracking_uri:
+          parameterType: STRING
+        version:
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: NUMBER_DOUBLE
+  comp-tune-evaluate-register:
+    executorLabel: exec-tune-evaluate-register
+    inputDefinitions:
+      parameters:
+        data_sha:
+          parameterType: STRING
+        tracking_uri:
+          parameterType: STRING
+        trials:
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      parameters:
+        nested_interval_score:
+          parameterType: NUMBER_DOUBLE
+        nested_mae:
+          parameterType: NUMBER_DOUBLE
+        promoted:
+          parameterType: BOOLEAN
+        version:
+          parameterType: NUMBER_INTEGER
+deploymentSpec:
+  executors:
+    exec-data-check:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_check
+        command:
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_check(data_path: str) -> str:\n    \"\"\"Schema and sanity\
+          \ checks; fails the run on bad data. Returns the data SHA-256 prefix.\"\"\
+          \"\n    import hashlib\n    import numpy as np\n    import pandas as pd\n\
+          \    df = pd.read_csv(data_path)\n    need = {\"cell\", \"cycle\", \"capacity_Ah\"\
+          , \"rest_before_h\", \"T_max_C\"}\n    assert need.issubset(df.columns),\
+          \ f\"missing columns {need - set(df.columns)}\"\n    for c, g in df.groupby(\"\
+          cell\"):\n        assert np.all(np.diff(g.cycle.values) > 0), f\"{c}: cycle\
+          \ index not increasing\"\n        assert g.capacity_Ah.between(0.05, 5).all(),\
+          \ f\"{c}: capacity outside 0.05-5 Ah\"\n        assert len(g) >= 60, f\"\
+          {c}: fewer than 60 cycles\"\n    sha = hashlib.sha256(open(data_path, \"\
+          rb\").read()).hexdigest()[:12]\n    print(f\"data ok: {df.cell.nunique()}\
+          \ cells, {len(df)} cycles, sha {sha}\")\n    return sha\n\n"
+        image: ghcr.io/zaifmohammed-eng/cell-eol-forecaster:1.0.0
+    exec-release-note:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - release_note
+        command:
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef release_note(version: int, promoted: bool, nested_interval_score:\
+          \ float, nested_mae: float,\n                 shift_route_rate: float) ->\
+          \ str:\n    status = \"promoted to champion\" if promoted else \"registered,\
+          \ held back (not better than champion)\"\n    msg = (f\"cell-eol-forecaster\
+          \ v{version} {status}: nested LOCO interval score \"\n           f\"{nested_interval_score:.1f},\
+          \ EOL MAE {nested_mae:.1f} cycles, shift route rate {shift_route_rate:.0%}\"\
+          )\n    print(msg)\n    return msg\n\n"
+        image: ghcr.io/zaifmohammed-eng/cell-eol-forecaster:1.0.0
+    exec-shift-check:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - shift_check
+        command:
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef shift_check(tracking_uri: str, version: int) -> float:\n    \"\
+          \"\"Replays unseen-protocol cells; fails if any is forecast instead of routed\
+          \ or rejected.\"\"\"\n    from mlops.monitor import main\n    r = main(f\"\
+          models:/cell-eol-forecaster/{version}\", tracking_uri)\n    leaked = [c\
+          \ for c, v in r[\"cells\"].items() if v[\"decision\"] == \"forecast\"]\n\
+          \    ctrl_blocked = [c for c, v in r[\"in_distribution_gate_control\"].items()\
+          \ if v[\"decision\"] != \"forecast\"]\n    assert not leaked, f\"shifted\
+          \ cells forecast without review: {leaked}\"\n    print(\"in-distribution\
+          \ cells blocked by gates:\", ctrl_blocked)\n    return r[\"shift_routed_or_rejected\"\
+          ] / r[\"n_shift_cells\"]\n\n"
+        image: ghcr.io/zaifmohammed-eng/cell-eol-forecaster:1.0.0
+    exec-tune-evaluate-register:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - tune_evaluate_register
+        command:
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef tune_evaluate_register(trials: int, tracking_uri: str, data_sha:\
+          \ str) -> NamedTuple(\n        \"Out\", [(\"version\", int), (\"promoted\"\
+          , bool), (\"nested_interval_score\", float), (\"nested_mae\", float)]):\n\
+          \    from collections import namedtuple\n    from mlops.train import main\n\
+          \    s = main(trials, tracking_uri, None)\n    assert s[\"registry\"][\"\
+          data_sha256\"] == data_sha, \"training data changed between steps\"\n  \
+          \  Out = namedtuple(\"Out\", [\"version\", \"promoted\", \"nested_interval_score\"\
+          , \"nested_mae\"])\n    return Out(int(s[\"registry\"][\"version\"]), bool(s[\"\
+          registry\"][\"promoted\"]),\n               float(s[\"nested\"][\"tuned\"\
+          ][\"interval_score\"]), float(s[\"nested\"][\"tuned\"][\"mae\"]))\n\n"
+        image: ghcr.io/zaifmohammed-eng/cell-eol-forecaster:1.0.0
+pipelineInfo:
+  description: Validate data, tune with nested LOCO, register in MLflow, gate on distribution
+    shift.
+  name: cell-eol-forecaster-training
+root:
+  dag:
+    tasks:
+      data-check:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-check
+        inputs:
+          parameters:
+            data_path:
+              componentInputParameter: data_path
+        taskInfo:
+          name: data-check
+      release-note:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-release-note
+        dependentTasks:
+        - shift-check
+        - tune-evaluate-register
+        inputs:
+          parameters:
+            nested_interval_score:
+              taskOutputParameter:
+                outputParameterKey: nested_interval_score
+                producerTask: tune-evaluate-register
+            nested_mae:
+              taskOutputParameter:
+                outputParameterKey: nested_mae
+                producerTask: tune-evaluate-register
+            promoted:
+              taskOutputParameter:
+                outputParameterKey: promoted
+                producerTask: tune-evaluate-register
+            shift_route_rate:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: shift-check
+            version:
+              taskOutputParameter:
+                outputParameterKey: version
+                producerTask: tune-evaluate-register
+        taskInfo:
+          name: release-note
+      shift-check:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-shift-check
+        dependentTasks:
+        - tune-evaluate-register
+        inputs:
+          parameters:
+            tracking_uri:
+              componentInputParameter: tracking_uri
+            version:
+              taskOutputParameter:
+                outputParameterKey: version
+                producerTask: tune-evaluate-register
+        taskInfo:
+          name: shift-check
+      tune-evaluate-register:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-tune-evaluate-register
+        dependentTasks:
+        - data-check
+        inputs:
+          parameters:
+            data_sha:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: data-check
+            tracking_uri:
+              componentInputParameter: tracking_uri
+            trials:
+              componentInputParameter: trials
+        taskInfo:
+          name: tune-evaluate-register
+  inputDefinitions:
+    parameters:
+      data_path:
+        parameterType: STRING
+      tracking_uri:
+        parameterType: STRING
+      trials:
+        defaultValue: 60.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.18.0

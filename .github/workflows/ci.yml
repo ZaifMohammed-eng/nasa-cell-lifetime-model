@@ -1,0 +1,22 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[mlops,serve,dev]"
+      - run: pytest -q
+      - name: Compile Kubeflow pipeline
+        run: python pipelines/kfp_pipeline.py --compile pipelines/cell_eol_pipeline.yaml
+      - name: Smoke train + register (3 trials, throwaway registry)
+        run: python -m mlops.train --trials 3 --tracking-uri sqlite:///ci.db --out ci_metrics.json
+      - name: Shift gate against the smoke model
+        run: python -m mlops.monitor --tracking-uri sqlite:///ci.db

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cell EOL Forecaster: live demo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%224%22 y=%222%22 width=%228%22 height=%2213%22 rx=%221.5%22 fill=%22%23264a8c%22/%3E%3Crect x=%226%22 y=%220.5%22 width=%224%22 height=%222%22 fill=%22%23264a8c%22/%3E%3C/svg%3E">
+<style>
+  :root{--ink:#1d2433;--muted:#5b6475;--line:#dde2ea;--bg:#f6f7f9;--card:#fff;--blue:#264a8c;
+        --ok:#1f7a4d;--okbg:#e5f4ec;--warn:#9a5b00;--warnbg:#fdf1dc;--bad:#a2262b;--badbg:#fbe7e8;--gray:#eef0f4}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:18px 28px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);max-width:980px}
+  .meta{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .chip{background:var(--gray);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted)}
+  .chip b{color:var(--ink)} a{color:var(--blue)}
+  main{display:grid;grid-template-columns:330px 1fr;gap:18px;padding:18px 28px;max-width:1400px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  aside.card{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;align-self:start}
+  .group{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+  .group:first-child{margin-top:0}
+  .case{display:block;width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:8px;
+        padding:8px 10px;margin-bottom:6px;cursor:pointer;font:inherit;color:inherit}
+  .case:hover{border-color:var(--blue)} .case.active{border-color:var(--blue);box-shadow:0 0 0 2px #264a8c22}
+  .case small{display:block;color:var(--muted)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .badge{display:inline-block;border-radius:6px;padding:2px 8px;font-weight:600;font-size:12px}
+  .forecast{background:var(--okbg);color:var(--ok)} .route_to_engineer{background:var(--warnbg);color:var(--warn)}
+  .reject{background:var(--badbg);color:var(--bad)} .eol_already_reached{background:var(--gray);color:var(--ink)}
+  .pass{background:var(--okbg);color:var(--ok)} .fail{background:var(--badbg);color:var(--bad)}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}
+  .stat{background:var(--bg);border-radius:8px;padding:8px 10px}
+  .stat span{display:block;font-size:11px;color:var(--muted)} .stat b{font-size:17px}
+  .reasons{margin:6px 0 0;padding-left:18px;color:var(--muted)}
+  svg{width:100%;height:auto;background:#fff}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:4px}
+  .sw{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+  button.primary{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+  button.primary:disabled{opacity:.5}
+  table{border-collapse:collapse;width:100%;font-size:13px} th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+  th{color:var(--muted);font-weight:600} td.num{text-align:right;font-variant-numeric:tabular-nums}
+  textarea{width:100%;height:170px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:8px;padding:8px}
+  pre{background:var(--bg);border-radius:8px;padding:10px;overflow:auto;font-size:12px;max-height:280px;margin:8px 0 0}
+  .note{color:var(--muted);font-size:12px}
+  .stack>*+*{margin-top:18px}
+  @media (max-width:900px){main{grid-template-columns:1fr} aside.card{position:static;max-height:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Li-ion cell end-of-life forecaster: live demo</h1>
+  <div class="sub">Forecasts the cycle at which an 18650 cell falls to 80 % of its initial capacity from its first
+    cycles of NASA aging data, with a 90 % interval. Inputs outside the training envelope are routed to an engineer
+    instead of answered. Pick a case, or send your own request.</div>
+  <div class="meta" id="meta"><span class="chip">loading model…</span></div>
+</header>
+
+<main>
+  <aside class="card" id="cases"></aside>
+
+  <section class="stack">
+    <div class="card" id="result"><div class="note">Select a case on the left.</div></div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <b>Run every test case</b>
+        <button class="primary" id="runall">Run all</button>
+      </div>
+      <div class="note" style="margin-top:4px">Checks each case's decision against what it should be. Held-out
+        cases also report forecast error and whether the 90 % interval contains the true EOL.</div>
+      <div id="suite" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <b>Try your own request</b>
+      <div class="note">POST <code>/v1/forecast</code>. Edit the JSON (for example change a capacity or the
+        temperature) and send it. Rate limit: 120 POST requests per minute per IP.</div>
+      <textarea id="req" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:8px"><button class="primary" id="send">Send</button>
+        <span class="note" id="sendnote"></span></div>
+      <pre id="resp" hidden></pre>
+      <div class="note" style="margin-top:10px">From a terminal:</div>
+      <pre id="curl"></pre>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? e.className = v : e.setAttribute(k, v);
+  for (const k of kids) e.append(k instanceof Node ? k : document.createTextNode(k ?? ""));
+  return e;
+};
+const fmt = (v, d = 0) => v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toFixed(d);
+const LABEL = {forecast: "forecast", route_to_engineer: "routed to engineer", reject: "rejected",
+               eol_already_reached: "EOL already reached"};
+let CASES = [];
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(body.detail || r.statusText), {status: r.status, body});
+  return body;
+}
+
+async function loadMeta() {
+  const m = await api("/v1/model");
+  const meta = $("#meta"); meta.textContent = "";
+  const chip = (k, v) => meta.append(el("span", {class: "chip"}, k + " ", el("b", {}, v)));
+  chip("model", m.version);
+  chip("trained on", m.train_cells.join(", "));
+  const n = (m.registry || {}).nested_loco;
+  if (n) {
+    chip("held-out EOL error", fmt(n.tuned_mae, 1) + " cycles");
+    chip("baseline (fleet mean)", fmt(m.registry.baseline_fleet_mean_mae, 1) + " cycles");
+    chip("90 % interval coverage", Math.round(n.tuned_coverage90 * 12) + "/12");
+  }
+  meta.append(el("span", {class: "chip"}, el("a", {href: "/docs"}, "API docs")));
+  meta.append(el("span", {class: "chip"}, el("a", {href: "/metrics"}, "Prometheus metrics")));
+}
+
+async function loadCases() {
+  CASES = await api("/v1/cases");
+  const box = $("#cases"); let g = null;
+  for (const c of CASES) {
+    if (c.group !== g) { g = c.group; box.append(el("div", {class: "group"}, g)); }
+    const b = el("button", {class: "case", "data-id": c.id}, c.title, el("small", {}, "expected: " + c.expect.map(x => LABEL[x]).join(" or ")));
+    b.onclick = () => runCase(c.id);
+    box.append(b);
+  }
+}
+
+function chart(res) {
+  const s = res.series, p = res.prediction, W = 760, H = 300, L = 52, R = 16, T = 14, B = 38;
+  const xs = s.cycle, ys = s.capacity_Ah.filter(v => v > 0.05);
+  let xmax = Math.max(...xs, p.eol_p95 || 0, res.true_eol || 0) * 1.05;
+  const ymin = Math.min(...ys, 0.8 * s.q0_Ah) * 0.97, ymax = Math.max(...ys) * 1.02;
+  const X = v => L + (v / xmax) * (W - L - R), Y = v => T + (1 - (v - ymin) / (ymax - ymin)) * (H - T - B);
+  const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const add = (tag, a, text) => { const e = document.createElementNS(ns, tag); for (const k in a) e.setAttribute(k, a[k]); if (text) e.textContent = text; svg.append(e); return e; };
+  // axes and grid
+  for (let i = 0; i <= 5; i++) {
+    const v = ymin + (ymax - ymin) * i / 5;
+    add("line", {x1: L, x2: W - R, y1: Y(v), y2: Y(v), stroke: "#eef0f4"});
+    add("text", {x: L - 6, y: Y(v) + 4, "text-anchor": "end", "font-size": 11, fill: "#5b6475"}, v.toFixed(2));
+  }
+  const step = xmax > 300 ? 50 : xmax > 120 ? 25 : 10;
+  for (let v = 0; v <= xmax; v += step) add("text", {x: X(v), y: H - B + 16, "text-anchor": "middle", "font-size": 11, fill: "#5b6475"}, v);
+  add("text", {x: (L + W - R) / 2, y: H - 4, "text-anchor": "middle", "font-size": 11, fill: "#5b6475"}, "cycle");
+  add("text", {x: 12, y: (T + H - B) / 2, "text-anchor": "middle", "font-size": 11, fill: "#5b6475", transform: `rotate(-90 12 ${(T + H - B) / 2})`}, "capacity (Ah)");
+  // interval band and lines
+  if (p.eol_p05 !== null && p.decision !== "reject") {
+    add("rect", {x: X(p.eol_p05), y: T, width: Math.max(X(p.eol_p95) - X(p.eol_p05), 2), height: H - T - B, fill: "#264a8c", opacity: 0.12});
+    add("line", {x1: X(p.eol_p50), x2: X(p.eol_p50), y1: T, y2: H - B, stroke: "#264a8c", "stroke-width": 2});
+  }
+  add("line", {x1: L, x2: W - R, y1: Y(0.8 * s.q0_Ah), y2: Y(0.8 * s.q0_Ah), stroke: "#a2262b", "stroke-dasharray": "5 4"});
+  if (res.true_eol !== null) add("line", {x1: X(res.true_eol), x2: X(res.true_eol), y1: T, y2: H - B, stroke: "#1f7a4d", "stroke-width": 2, "stroke-dasharray": "2 3"});
+  // data: full history (unseen) then the observed window
+  const path = (cx, cy, col, w) => {
+    const pts = cx.map((x, i) => [x, cy[i]]).filter(([, y]) => y > 0.05);
+    add("polyline", {points: pts.map(([x, y]) => `${X(x)},${Y(y)}`).join(" "), fill: "none", stroke: col, "stroke-width": w});
+  };
+  path(xs, s.capacity_Ah, "#c3c9d4", 1.5);
+  path(s.observed_cycle, s.observed_capacity_Ah, "#1d2433", 2.2);
+  return svg;
+}
+
+async function runCase(id) {
+  document.querySelectorAll(".case").forEach(b => b.classList.toggle("active", b.dataset.id === id));
+  const box = $("#result"); box.textContent = "Running…";
+  try {
+    const r = await api(`/v1/cases/${id}/run`, {method: "POST"});
+    const p = r.prediction;
+    box.textContent = "";
+    box.append(el("div", {class: "row"}, el("b", {style: "font-size:16px"}, r.case.title),
+      el("span", {class: "badge " + p.decision}, LABEL[p.decision]),
+      el("span", {class: "badge " + (r.pass ? "pass" : "fail")}, r.pass ? "as expected" : "unexpected")));
+    box.append(el("div", {class: "note"}, r.case.detail + " Scored by: " + r.scored_by + "."));
+    const st = el("div", {class: "stats"});
+    const stat = (k, v) => st.append(el("div", {class: "stat"}, el("span", {}, k), el("b", {}, v)));
+    stat("cycles given", p.n_cycles_seen);
+    stat("EOL forecast (p50)", fmt(p.eol_p50));
+    stat("90 % interval", p.eol_p05 === null ? "–" : `${fmt(p.eol_p05)} – ${fmt(p.eol_p95)}`);
+    stat("true EOL", r.true_eol === null ? "unknown" : fmt(r.true_eol));
+    if (r.abs_error !== null) stat("error", fmt(r.abs_error) + " cycles");
+    if (r.covered !== null) stat("true EOL in interval", r.covered ? "yes" : "no");
+    box.append(st);
+    if (p.reasons.length) box.append(el("ul", {class: "reasons"}, ...p.reasons.map(x => el("li", {}, x))));
+    box.append(chart(r));
+    box.append(el("div", {class: "legend"},
+      el("span", {}, el("i", {class: "sw", style: "background:#1d2433"}), "cycles given to the model"),
+      el("span", {}, el("i", {class: "sw", style: "background:#c3c9d4"}), "rest of the cell's life (not given)"),
+      el("span", {}, el("i", {class: "sw", style: "background:#a2262b"}), "80 % of initial capacity"),
+      el("span", {}, el("i", {class: "sw", style: "background:#264a8c"}), "forecast p50 and 90 % interval"),
+      el("span", {}, el("i", {class: "sw", style: "background:#1f7a4d"}), "true EOL")));
+    $("#req").value = JSON.stringify(r.request, null, 1);
+  } catch (e) { box.textContent = "Error: " + e.message; }
+}
+
+async function runAll() {
+  const btn = $("#runall"); btn.disabled = true;
+  const out = $("#suite"); out.textContent = "Running " + CASES.length + " cases…";
+  const rows = [];
+  for (const c of CASES) {
+    try { rows.push(await api(`/v1/cases/${c.id}/run`, {method: "POST"})); }
+    catch (e) { rows.push({case: c, error: e.message, pass: false, prediction: {}}); }
+  }
+  const pass = rows.filter(r => r.pass).length;
+  const ho = rows.filter(r => r.abs_error !== null && r.abs_error !== undefined);
+  const mae = ho.reduce((a, r) => a + r.abs_error, 0) / (ho.length || 1);
+  const cov = ho.filter(r => r.covered).length;
+  out.textContent = "";
+  out.append(el("div", {class: "row"}, el("span", {class: "badge " + (pass === rows.length ? "pass" : "fail")}, `${pass}/${rows.length} as expected`),
+    el("span", {class: "note"}, `held-out: mean error ${fmt(mae, 1)} cycles, ${cov}/${ho.length} intervals contain the true EOL`)));
+  out.append(el("div", {class: "note", style: "margin:6px 0"}, "These held-out forecasts use hyperparameters tuned on all four cells, so their error is slightly optimistic. The nested estimate in the header (tuning never sees the scored cell) is the honest number."));
+  const t = el("table", {}, el("tr", {}, ...["case", "decision", "p50", "true EOL", "error", "in 90 %", "check"].map(h => el("th", {}, h))));
+  for (const r of rows) {
+    const p = r.prediction || {};
+    t.append(el("tr", {},
+      el("td", {}, r.case.title), el("td", {}, el("span", {class: "badge " + (p.decision || "reject")}, LABEL[p.decision] || r.error)),
+      el("td", {class: "num"}, fmt(p.eol_p50)), el("td", {class: "num"}, r.true_eol === null ? "–" : fmt(r.true_eol)),
+      el("td", {class: "num"}, fmt(r.abs_error)), el("td", {}, r.covered === null || r.covered === undefined ? "–" : (r.covered ? "yes" : "no")),
+      el("td", {}, el("span", {class: "badge " + (r.pass ? "pass" : "fail")}, r.pass ? "pass" : "fail"))));
+  }
+  out.append(t); btn.disabled = false;
+}
+
+async function send() {
+  const out = $("#resp"); out.hidden = false; $("#sendnote").textContent = "";
+  let body;
+  try { body = JSON.parse($("#req").value); } catch (e) { out.textContent = "Invalid JSON: " + e.message; return; }
+  try {
+    const r = await api("/v1/forecast", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    out.textContent = JSON.stringify(r, null, 1); $("#sendnote").textContent = LABEL[r.decision] + ", " + r.latency_ms + " ms";
+  } catch (e) { out.textContent = `HTTP ${e.status}: ` + JSON.stringify(e.body || e.message, null, 1); }
+}
+
+$("#runall").onclick = runAll; $("#send").onclick = send;
+$("#curl").textContent = `curl -s ${location.origin}/v1/cases
+curl -s -X POST ${location.origin}/v1/cases/holdout-B0006-k40/run
+curl -s -X POST ${location.origin}/v1/forecast -H 'Content-Type: application/json' -d @request.json`;
+loadMeta(); loadCases().then(() => runCase("holdout-B0006-k40"));
+</script>
+</body>
+</html>

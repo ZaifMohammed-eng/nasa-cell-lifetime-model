@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cell-eol-forecaster"
+version = "1.0.0"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "scipy>=1.11", "pandas>=2.0", "emcee>=3.1"]
+
+[project.optional-dependencies]
+mlops = ["mlflow>=3.0", "optuna>=3.6", "kfp==2.18.0"]
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "prometheus_client>=0.20", "mlflow>=3.0"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.setuptools]
+packages = ["src", "mlops", "serve", "pipelines"]

@@ -1,0 +1,21 @@
+{
+ "model": "cell-eol-forecaster",
+ "alias": "champion",
+ "version": 2,
+ "run_id": "7f4f80d7941a4046b98c6f4f663450c9",
+ "git_sha": "0cdb427",
+ "data_sha256": "b7bbba184898",
+ "nested_loco": {
+  "tuned_mae": 12.666666666666666,
+  "tuned_coverage90": 0.75,
+  "tuned_interval_score": 66.11250000000013,
+  "tuned_mean_width": 34.612499999999976,
+  "tuned_forecast_rate": 1.0,
+  "default_mae": 19.916666666666668,
+  "default_coverage90": 0.8333333333333334,
+  "default_interval_score": 141.39999999999986,
+  "default_mean_width": 128.06666666666652,
+  "default_forecast_rate": 0.5
+ },
+ "baseline_fleet_mean_mae": 31.0
+}

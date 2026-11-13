@@ -1,0 +1,50 @@
+{
+ "baseline": {
+  "fleet_mean_mae": 31.0,
+  "mae": 19.916666666666668,
+  "mae_map": 19.25,
+  "coverage90": 0.8333333333333334,
+  "interval_score": 141.39999999999986,
+  "mean_width": 128.06666666666652
+ },
+ "nested": {
+  "tuned": {
+   "mae": 12.666666666666666,
+   "coverage90": 0.75,
+   "interval_score": 66.11250000000013,
+   "mean_width": 34.612499999999976,
+   "forecast_rate": 1.0
+  },
+  "default": {
+   "mae": 19.916666666666668,
+   "coverage90": 0.8333333333333334,
+   "interval_score": 141.39999999999986,
+   "mean_width": 128.06666666666652,
+   "forecast_rate": 0.5
+  }
+ },
+ "final": {
+  "hp": {
+   "prior_scale": 1.4547144645240708,
+   "long_rest_h": 8.0,
+   "noise_mult": 10.208306694456247,
+   "cov_scale": 0.012505278253969111,
+   "min_cycles": 30,
+   "max_rel_width": 1.0,
+   "n_draws": 400
+  },
+  "mae": 11.75,
+  "mae_map": 11.416666666666666,
+  "coverage90": 0.8333333333333334,
+  "interval_score": 35.17916666666666,
+  "mean_width": 31.845833333333328
+ },
+ "registry": {
+  "version": 2,
+  "promoted": true,
+  "previous_champion": 1,
+  "run_id": "7f4f80d7941a4046b98c6f4f663450c9",
+  "git_sha": "0cdb427",
+  "data_sha256": "b7bbba184898"
+ }
+}

@@ -1,0 +1,152 @@
+{
+ "model_uri": "models:/cell-eol-forecaster/3",
+ "k": 40,
+ "psi_alert": 0.25,
+ "cells": {
+  "B0029": {
+   "decision": "route_to_engineer",
+   "reasons": [
+    "ood:temperature:60.0C_outside_[33.7,44.9]"
+   ],
+   "psi": {
+    "T_max_C": 8.29,
+    "V_end": 2.59,
+    "rest_before_h": 6.91,
+    "cap_rel": 0.37
+   },
+   "psi_alerts": [
+    "T_max_C",
+    "V_end",
+    "rest_before_h",
+    "cap_rel"
+   ]
+  },
+  "B0033": {
+   "decision": "route_to_engineer",
+   "reasons": [
+    "ood:initial_capacity:0.640Ah_outside_[1.66,2.23]",
+    "ood:temperature:51.7C_outside_[33.7,44.9]",
+    "ood:capacity_jump_gt_15pct"
+   ],
+   "psi": {
+    "T_max_C": 7.62,
+    "V_end": 8.29,
+    "rest_before_h": 5.25,
+    "cap_rel": 7.62
+   },
+   "psi_alerts": [
+    "T_max_C",
+    "V_end",
+    "rest_before_h",
+    "cap_rel"
+   ]
+  },
+  "B0036": {
+   "decision": "route_to_engineer",
+   "reasons": [
+    "ood:initial_capacity:1.536Ah_outside_[1.66,2.23]",
+    "ood:temperature:27.3C_outside_[33.7,44.9]",
+    "ood:capacity_jump_gt_15pct"
+   ],
+   "psi": {
+    "T_max_C": 6.96,
+    "V_end": 8.29,
+    "rest_before_h": 5.25,
+    "cap_rel": 7.62
+   },
+   "psi_alerts": [
+    "T_max_C",
+    "V_end",
+    "rest_before_h",
+    "cap_rel"
+   ]
+  },
+  "B0045": {
+   "decision": "reject",
+   "reasons": [
+    "invalid:nonpositive_or_missing_capacity",
+    "ood:initial_capacity:0.965Ah_outside_[1.66,2.23]",
+    "ood:temperature:16.2C_outside_[33.7,44.9]",
+    "ood:capacity_jump_gt_15pct"
+   ],
+   "psi": {
+    "T_max_C": 8.29,
+    "V_end": 7.62,
+    "rest_before_h": 6.29,
+    "cap_rel": 6.29
+   },
+   "psi_alerts": [
+    "T_max_C",
+    "V_end",
+    "rest_before_h",
+    "cap_rel"
+   ]
+  },
+  "B0053": {
+   "decision": "route_to_engineer",
+   "reasons": [
+    "ood:initial_capacity:1.124Ah_outside_[1.66,2.23]",
+    "ood:temperature:20.8C_outside_[33.7,44.9]"
+   ],
+   "psi": {
+    "T_max_C": 8.29,
+    "V_end": 8.29,
+    "rest_before_h": 6.57,
+    "cap_rel": 2.76
+   },
+   "psi_alerts": [
+    "T_max_C",
+    "V_end",
+    "rest_before_h",
+    "cap_rel"
+   ]
+  }
+ },
+ "in_distribution_psi": {
+  "B0005": {
+   "T_max_C": 5.26,
+   "V_end": 6.49,
+   "rest_before_h": 0.92,
+   "cap_rel": 3.08
+  },
+  "B0006": {
+   "T_max_C": 2.66,
+   "V_end": 4.84,
+   "rest_before_h": 0.92,
+   "cap_rel": 2.85
+  },
+  "B0007": {
+   "T_max_C": 5.64,
+   "V_end": 5.95,
+   "rest_before_h": 0.92,
+   "cap_rel": 3.16
+  },
+  "B0018": {
+   "T_max_C": 5.84,
+   "V_end": 4.16,
+   "rest_before_h": 4.99,
+   "cap_rel": 0.79
+  }
+ },
+ "in_distribution_gate_control": {
+  "B0005": {
+   "decision": "forecast",
+   "reasons": []
+  },
+  "B0006": {
+   "decision": "forecast",
+   "reasons": []
+  },
+  "B0007": {
+   "decision": "forecast",
+   "reasons": []
+  },
+  "B0018": {
+   "decision": "forecast",
+   "reasons": []
+  }
+ },
+ "psi_note": "Per-cycle PSI is logged as a diagnostic only. With four training cells, between-cell spread dominates and in-distribution held-out cells also exceed the 0.25 alert, so routing uses the envelope gates in mlops/core.py instead.",
+ "shift_routed_or_rejected": 5,
+ "n_shift_cells": 5
+}
