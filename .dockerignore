@@ -1,0 +1,13 @@
+.git
+.venv
+**/__pycache__
+*.pyc
+mlruns
+mlruns.db
+mlflow.db
+mlartifacts
+kfp_local_outputs
+logs
+data/raw
+data/raw_shift
+.pytest_cache
