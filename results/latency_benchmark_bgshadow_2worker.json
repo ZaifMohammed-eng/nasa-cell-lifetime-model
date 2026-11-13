@@ -1,0 +1,32 @@
+{
+ "health": {
+  "status": "ok",
+  "model_version": "cell-eol-forecaster/v2",
+  "shadow": "models:/cell-eol-forecaster/1"
+ },
+ "n": 2000,
+ "workers": 2,
+ "cpu_count": 2,
+ "platform": "Linux-6.18.44-fc-v378-x86_64-with-glibc2.39",
+ "python": "3.13.18",
+ "sequential": {
+  "p50_ms": 48.21,
+  "p95_ms": 60.03,
+  "p99_ms": 68.03,
+  "throughput_rps": 19.5,
+  "non_200": 0
+ },
+ "concurrency_16": {
+  "p50_ms": 266.46,
+  "p95_ms": 784.15,
+  "p99_ms": 1119.72,
+  "throughput_rps": 54.3,
+  "non_200": 0
+ },
+ "decision_counts": {
+  "reject": 68.0,
+  "forecast": 159.0,
+  "route_to_engineer": 358.0,
+  "eol_already_reached": 64.0
+ }
+}

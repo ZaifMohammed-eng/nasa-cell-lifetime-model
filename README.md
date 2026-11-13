@@ -82,3 +82,109 @@ python src/figures.py               # -> figures/*.png
 
 B. Saha and K. Goebel (2007). *Battery Data Set*, NASA Prognostics Data Repository,
 NASA Ames Research Center, Moffett Field, CA.
+
+---
+
+## Production layer (branch `mlops-production`)
+
+The research model above, turned into a service that can be retrained, gated and
+monitored. Everything below was run end to end; numbers are in `results/`.
+
+```
+data_check ─► tune_evaluate_register ─► shift_check ─► [if promoted] release_note     (Kubeflow, KFP v2)
+                    │  Optuna, nested LOCO
+                    ▼
+              MLflow tracking + model registry  (aliases: champion / challenger)
+                    │
+                    ▼
+     FastAPI service ─ /v1/forecast ─ decision + 90 % interval + reason codes
+        ├─ envelope gates: route out-of-range inputs to an engineer
+        ├─ shadow model scored after the response, logged for comparison
+        └─ Prometheus /metrics, JSONL request log for drift checks
+```
+
+| Piece | File | What it does |
+|---|---|---|
+| Forecaster | `mlops/core.py` | Cross-cell prior + MAP fit + Laplace/AR(1) interval; analytic EOL; input validation and abstain rules |
+| Tuning, registry | `mlops/train.py` | Optuna over prior inflation, recovery-rest threshold, noise and interval scale; objective is the 90 % interval score; nested leave-one-cell-out for an honest estimate; logs to MLflow and promotes only if the nested score beats the current champion |
+| Pipeline | `pipelines/kfp_pipeline.py` | KFP v2 DAG; compiles to `pipelines/cell_eol_pipeline.yaml`; runs locally with the KFP subprocess runner |
+| Service | `serve/app.py` | FastAPI + pydantic schema, model loaded from the registry by alias, background shadow scoring, Prometheus metrics |
+| Shift check | `mlops/monitor.py` | Replays NASA cells run under other protocols (`scripts/get_shift_data.py`) |
+| Load test | `mlops/bench.py` | Starts uvicorn and replays 2,000 real cell histories |
+| CI | `.github/workflows/ci.yml` | Tests, pipeline compile, smoke train/register, shift gate |
+
+### Evaluation (nested leave-one-cell-out, k = 30/40/50 cycles, 12 forecasts)
+
+| | EOL MAE (cycles) | 90 % interval score | mean interval width | 90 % coverage |
+|---|---|---|---|---|
+| Fleet-mean EOL baseline | 31.0 | – | – | – |
+| Research configuration (untuned) | 19.9 | 141.4 | 128 | 10/12 |
+| Tuned, v1 (narrower search space) | 15.3 | 106.6 | 100 | 10/12 |
+| **Tuned, v2 (champion)** | **12.7** | **66.1** | **35** | **9/12** |
+
+Hyperparameters are tuned on three cells and scored once on the fourth, so these
+numbers never touch the tuned-on data. The champion's intervals are much
+narrower but under-cover: 9/12 against a nominal 90 %. Twelve forecasts from four
+cells cannot pin coverage down, and more cells are the fix, not more tuning.
+
+While porting, one leak was found and removed: the research script estimated the
+residual noise from all four cells, including the held-out one. The production
+model uses training cells only (the effect on LOCO error was under one cycle).
+
+### Registry gate
+
+| Event | Result |
+|---|---|
+| v1 trained | promoted (no champion yet) |
+| v2 trained with a wider search space | promoted (nested interval score 66.1 < 106.6) |
+| v3 identical retrain via the Kubeflow pipeline | **not** promoted (no improvement), champion stays v2 |
+
+### Distribution shift (`results/drift_report.json`)
+
+Five NASA cells the model never saw, run at 43 °C, 4 °C or a 4 A discharge, were
+replayed at 40 cycles: 5/5 routed to an engineer or rejected (temperature and
+initial-capacity envelope, capacity jumps, zero-capacity records). Control: each
+training cell, scored by a model fit on the other three, gets a forecast (4/4).
+
+Per-cycle PSI was tried as a drift gate and dropped. With four training cells,
+between-cell spread dominates, and in-distribution held-out cells also exceed the
+0.25 alert. PSI is still logged as a diagnostic.
+
+### Latency (`results/latency_benchmark_*.json`)
+
+2,000 requests of 10–120 real cycles each; uvicorn, 1 worker, 2 vCPU, with the load
+generator on the same machine, so these are upper bounds.
+
+| Configuration | sequential p50 / p95 | 16 concurrent p95 | throughput (16 conc.) | errors |
+|---|---|---|---|---|
+| Champion only | 6.5 / 15.4 ms | 0.41 s | 87 req/s | 0 |
+| + shadow, scored inline | 9.8 / 55.9 ms | 1.87 s | 39 req/s | 0 |
+| + shadow, scored in background | 16.3 / 48.2 ms | 0.83 s | 41 req/s | 0 |
+
+The model itself takes about 3 ms per request (p99 14 ms in-process). Under load
+the service is CPU-bound, and a shadow model costs about half the capacity, so
+shadow mode is meant for a validation window, not for permanent use on this
+footprint.
+
+### Not done here
+
+- No Kubernetes cluster: the pipeline was compiled and run with the KFP local
+  runner (all four steps), not on Kubeflow itself.
+- No Docker daemon: the `Dockerfile` has not been built.
+- Ground-truth feedback (joining logged forecasts to observed EOL) is designed
+  into the request log but not implemented.
+
+### Run it
+
+Full deployment guide: [DEPLOY.md](DEPLOY.md). One-command local stack
+(`docker compose up --build`: MLflow, the Kubeflow pipeline, the API and a demo
+page with 22 test cases), a public Hugging Face Space, and Kubernetes manifests.
+
+```bash
+pip install -e ".[mlops,serve,dev]"
+python scripts/get_shift_data.py        # shift-test cells (not used for training)
+make test train monitor pipeline-local
+make serve                               # http://localhost:8000/docs
+make bench
+make ui                                  # MLflow UI
+```

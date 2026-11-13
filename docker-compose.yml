@@ -1,0 +1,60 @@
+# Local deployment, no Kubernetes:  docker compose up --build
+#   mlflow    tracking server + model registry      http://localhost:5001
+#   pipeline  Kubeflow pipeline (KFP local runner): data check -> tune -> register -> shift check,
+#             then exports the champion; exits when done
+#   api       FastAPI service + demo page            http://localhost:8000
+# Every `docker compose up` retrains; the registry gate only promotes a better model.
+# Do not expose port 5001 publicly: the MLflow UI has no authentication.
+x-image: &image
+  build: .
+  image: cell-eol-forecaster:local
+
+services:
+  mlflow:
+    <<: *image
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      - --serve-artifacts
+      - --host=0.0.0.0
+      - --port=5000
+      - --allowed-hosts=mlflow,mlflow:*,localhost,localhost:*,127.0.0.1,127.0.0.1:*
+    ports: ["127.0.0.1:5001:5000"]
+    volumes: [mlflow-data:/mlflow]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      retries: 30
+
+  pipeline:
+    <<: *image
+    depends_on:
+      mlflow: {condition: service_healthy}
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    command: ["sh", "-c", "python pipelines/kfp_pipeline.py --local --trials 60 && python -m mlops.monitor"]
+    restart: "no"
+
+  api:
+    <<: *image
+    depends_on:
+      mlflow: {condition: service_healthy}
+      pipeline: {condition: service_completed_successfully}
+    environment:
+      MODEL_URI: models:/cell-eol-forecaster@champion
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      REQUEST_LOG: /app/logs/requests.jsonl
+      RATE_LIMIT_PER_MIN: "120"
+    command: ["uvicorn", "serve.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    ports: ["8000:8000"]
+    volumes: [api-logs:/app/logs]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 12
+
+volumes:
+  mlflow-data:
+  api-logs:
